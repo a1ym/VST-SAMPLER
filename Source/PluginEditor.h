@@ -29,5 +29,11 @@ private:
     // access the processor object that created it.
     VSTSamplerAudioProcessor& audioProcessor;
 
+    juce::TextButton importButton;
+
+    void importButtonClicked();
+    juce::AudioFormatManager formatManager;
+    
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VSTSamplerAudioProcessorEditor)
 };
