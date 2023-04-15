@@ -40,6 +40,7 @@ VSTSamplerAudioProcessorEditor::VSTSamplerAudioProcessorEditor(VSTSamplerAudioPr
 
 
     formatManager.registerBasicFormats();
+    p.transport.addChangeListener(this);
 
 }
 
@@ -50,10 +51,12 @@ void VSTSamplerAudioProcessorEditor::importButtonClicked()
         juce::File audioFile;
         audioFile = chooser.getResult();
         juce::AudioFormatReader* reader = formatManager.createReaderFor(audioFile);
-        std::unique_ptr < juce::AudioFormatReaderSource > tempSource(new juce::AudioFormatReaderSource(reader, true));  
-        p.transport.setSource(tempSource.get());
-        playSource.reset(tempSource.release());
-    
+        if (reader != nullptr) { //for when the new file is selected
+            std::unique_ptr < juce::AudioFormatReaderSource > tempSource(new juce::AudioFormatReaderSource(reader, true));
+            p.transport.setSource(tempSource.get());
+            transportStateChanged(Stopped);
+            playSource.reset(tempSource.release());
+        }
     }
 }
 
@@ -102,6 +105,18 @@ void VSTSamplerAudioProcessorEditor::transportStateChanged(TransportState newSta
     }
 }
 
+
+//Listening for changes - if there is a change, the state is changed to stopped
+void VSTSamplerAudioProcessorEditor::changeListenerCallback(juce::ChangeBroadcaster* source) {
+    if (source == &p.transport) {
+        if (p.transport.isPlaying()) {
+            transportStateChanged(Playing);
+        }
+        else {
+            transportStateChanged(Stopped);
+        }
+    }
+}
 
 VSTSamplerAudioProcessorEditor::~VSTSamplerAudioProcessorEditor()
 {

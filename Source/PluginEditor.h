@@ -14,7 +14,8 @@
 //==============================================================================
 /**
 */
-class VSTSamplerAudioProcessorEditor  : public juce::AudioProcessorEditor
+class VSTSamplerAudioProcessorEditor  : public juce::AudioProcessorEditor,
+                                        public juce::ChangeListener
 {
 public:
     VSTSamplerAudioProcessorEditor (VSTSamplerAudioProcessor& p);
@@ -52,6 +53,7 @@ private:
     void playButtonClicked();
     void stopButtonClicked();
     void transportStateChanged(TransportState newState);
+    void changeListenerCallback (juce::ChangeBroadcaster* source) override;
 
     juce::AudioFormatManager formatManager;
    
