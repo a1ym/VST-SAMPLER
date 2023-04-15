@@ -17,23 +17,45 @@
 class VSTSamplerAudioProcessorEditor  : public juce::AudioProcessorEditor
 {
 public:
-    VSTSamplerAudioProcessorEditor (VSTSamplerAudioProcessor&);
+    VSTSamplerAudioProcessorEditor (VSTSamplerAudioProcessor& p);
     ~VSTSamplerAudioProcessorEditor() override;
 
     //==============================================================================
     void paint (juce::Graphics&) override;
     void resized() override;
 
+
+
 private:
     // This reference is provided as a quick way for your editor to
     // access the processor object that created it.
-    VSTSamplerAudioProcessor& audioProcessor;
+
+    enum TransportState
+    {
+        Stopped,
+        Playing,
+        Starting,
+        Stopping
+    };
+
+    TransportState state;
+
+    VSTSamplerAudioProcessor& p;
 
     juce::TextButton importButton;
-
-    void importButtonClicked();
-    juce::AudioFormatManager formatManager;
+    juce::TextButton playButton;
+    juce::TextButton stopButton;
+    juce::TextButton chordIdButton;
     
+    void importButtonClicked();
+    
+    void playButtonClicked();
+    void stopButtonClicked();
+    void transportStateChanged(TransportState newState);
 
+    juce::AudioFormatManager formatManager;
+   
+
+    std::unique_ptr<juce::AudioFormatReaderSource> playSource;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VSTSamplerAudioProcessorEditor)
 };

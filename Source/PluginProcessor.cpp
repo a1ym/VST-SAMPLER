@@ -93,8 +93,7 @@ void VSTSamplerAudioProcessor::changeProgramName (int index, const juce::String&
 //==============================================================================
 void VSTSamplerAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
-    // Use this method as the place to do any pre-playback
-    // initialisation that you need..
+    transport.prepareToPlay(sampleRate, samplesPerBlock);
 }
 
 void VSTSamplerAudioProcessor::releaseResources()
@@ -143,6 +142,11 @@ void VSTSamplerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     // this code if your algorithm always overwrites all the output channels.
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear (i, 0, buffer.getNumSamples());
+
+
+    // Retrieve audio data from transport source
+    transport.getNextAudioBlock(juce::AudioSourceChannelInfo(buffer));
+
 
     // This is the place where you'd normally do the guts of your plugin's
     // audio processing...

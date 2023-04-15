@@ -11,15 +11,33 @@
 
 //==============================================================================
 VSTSamplerAudioProcessorEditor::VSTSamplerAudioProcessorEditor(VSTSamplerAudioProcessor& p)
-    : AudioProcessorEditor(&p), audioProcessor(p)
+    : AudioProcessorEditor(&p), p(p), state(Stopped)
 {
     // Make sure that before the constructor has finished, you've set the
     // editor's size to whatever you need it to be.
     setSize(400, 300);
 
     importButton.onClick = [this] {importButtonClicked();};
-    addAndMakeVisible(importButton);
+    addAndMakeVisible(&importButton);
     importButton.setButtonText("Import audio");
+
+    playButton.onClick = [this] {playButtonClicked();};
+    addAndMakeVisible(&playButton);
+    playButton.setButtonText("Play");
+    playButton.setEnabled(true);
+
+
+    stopButton.onClick = [this] {stopButtonClicked();};
+    addAndMakeVisible(&stopButton);
+    stopButton.setButtonText("Stop");
+    stopButton.setEnabled(false);
+
+
+    chordIdButton.onClick = [this] {importButtonClicked();};
+    addAndMakeVisible(&chordIdButton);
+    chordIdButton.setButtonText("Chord ID");
+
+
 
     formatManager.registerBasicFormats();
 
@@ -27,14 +45,63 @@ VSTSamplerAudioProcessorEditor::VSTSamplerAudioProcessorEditor(VSTSamplerAudioPr
 
 void VSTSamplerAudioProcessorEditor::importButtonClicked()
 {
-    juce::FileChooser chooser("Choose audio", juce::File::getSpecialLocation(juce::File::userDesktopDirectory), "*.wav", true, false, nullptr);
+    juce::FileChooser chooser("Choose audio", juce::File::getSpecialLocation(juce::File::userDesktopDirectory), "*.wav; *.mp3", true, false, nullptr);
     if (chooser.browseForFileToOpen()) {
         juce::File audioFile;
         audioFile = chooser.getResult();
         juce::AudioFormatReader* reader = formatManager.createReaderFor(audioFile);
         std::unique_ptr < juce::AudioFormatReaderSource > tempSource(new juce::AudioFormatReaderSource(reader, true));  
+        p.transport.setSource(tempSource.get());
+        playSource.reset(tempSource.release());
+    
     }
 }
+
+
+void VSTSamplerAudioProcessorEditor::playButtonClicked() 
+{
+    transportStateChanged(Starting);
+}
+
+void VSTSamplerAudioProcessorEditor::stopButtonClicked()
+{
+    transportStateChanged(Stopping);
+}
+
+
+void VSTSamplerAudioProcessorEditor::transportStateChanged(TransportState newState) 
+{
+    if (newState != state)
+    {
+        state = newState;
+
+        switch (state) {
+            case Stopped:
+                playButton.setEnabled(true);
+                p.transport.setPosition(0.0);
+                break;
+
+            case Playing:
+                playButton.setEnabled(true);
+                break;
+
+            case Starting:
+                stopButton.setEnabled(true);
+                playButton.setEnabled(false);
+                p.transport.start();
+                break;
+
+            case Stopping:
+                playButton.setEnabled(true);
+                stopButton.setEnabled(false);
+                p.transport.stop();
+                break;
+        }
+
+
+    }
+}
+
 
 VSTSamplerAudioProcessorEditor::~VSTSamplerAudioProcessorEditor()
 {
@@ -62,4 +129,8 @@ void VSTSamplerAudioProcessorEditor::resized()
 
 
     importButton.setBounds(leftMargin, topMargin, buttonWidth, buttonHeight);
+    playButton.setBounds(leftMargin, topMargin + 40, buttonWidth, buttonHeight);
+    stopButton.setBounds(leftMargin, topMargin + 80, buttonWidth, buttonHeight);
+    chordIdButton.setBounds(leftMargin, topMargin + 120, buttonWidth, buttonHeight);
+
 }
