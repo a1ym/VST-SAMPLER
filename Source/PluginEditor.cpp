@@ -169,7 +169,7 @@ void VSTSamplerAudioProcessorEditor::chordDetectionButtonClicked() {
     if (playSource != nullptr && reader)
     {
         // FFT Parameters
-        static constexpr auto fftOrder = 9;            
+        static constexpr auto fftOrder = 13;            
         static constexpr auto frameSize = 1 << fftOrder;
         const int hopSize = frameSize / 2;
         DBG("frameSize: " << frameSize);
@@ -207,7 +207,7 @@ void VSTSamplerAudioProcessorEditor::chordDetectionButtonClicked() {
         sampleRate = reader->sampleRate;
 
         // Iterate through the audio in chunks of hopSize
-        float stepSizeInSeconds = 1.0f;
+        float stepSizeInSeconds = 0.1f;
         int stepSize = static_cast<int>(sampleRate * stepSizeInSeconds);
 
         //int position = 0;
@@ -264,7 +264,7 @@ void VSTSamplerAudioProcessorEditor::chordDetectionButtonClicked() {
 
             if (chord.isNotEmpty()) {
                 chordLabel.setText(chord, juce::dontSendNotification);
-                DBG("Updated Chord Label: " << chord); // Add this line
+                DBG("Updated Chord Label: " << chord);
             }
             else
             {
@@ -291,20 +291,19 @@ void VSTSamplerAudioProcessorEditor::chordDetectionButtonClicked() {
 
 
 juce::String VSTSamplerAudioProcessorEditor::detectChord(const std::vector<float>& magnitudes) {
-    // Defining note frequencies and chord templates
-    const std::vector<float> noteFrequencies = { 16.35, 17.32, 18.35, 19.45, 20.60, 21.83, 23.12, 24.50, 25.96, 27.50, 29.14, 30.87 };
+    // Note frequencies and chord templates
     const std::vector<juce::String> noteNames = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
-    const std::vector<std::vector<int>> chordTemplates = {
-        {0, 4, 7},  // Major
-        {0, 3, 7},  // Minor
-        {0, 4, 7, 11}  // Major 7th
-        // Add more if needed
+    const std::vector<std::pair<std::vector<int>, juce::String>> chordTemplates = {
+    {{0, 4, 7}, "Major"},
+    {{0, 3, 7}, "Minor"},
+    {{0, 4, 7, 11}, "Major 7th"}
+    // Add more if needed
     };
 
-    // Vector to store the note histogram
-    std::vector<int> noteHistogram(12, 0);
+    // Vector for PCP
+    std::vector<float> pitchClassProfile(12, 0.0f);
 
-    // Identify peaks in magnitudes and update the note histogram
+    // Calculate PCP
     for (int i = 1; i < magnitudes.size() - 1; ++i)
     {
         float mag = magnitudes[i];
@@ -313,37 +312,49 @@ juce::String VSTSamplerAudioProcessorEditor::detectChord(const std::vector<float
             // Convert peak index to frequency
             float freq = static_cast<float>(i) * sampleRate / (2 * magnitudes.size());
 
-            // Convert frequency to MIDI note number then update the histogram
+ 
             int midiNote = round(69 + 12 * log2(freq / 440.0f));
             int noteIndex = midiNote % 12;
-            noteHistogram[noteIndex]++;
+            pitchClassProfile[noteIndex] += mag;
         }
     }
 
-    // Store best matching chord and score
+    // Normalize PCP
+    float maxValue = *std::max_element(pitchClassProfile.begin(), pitchClassProfile.end());
+    for (int i = 0; i < 12; ++i)
+    {
+        pitchClassProfile[i] /= maxValue;
+    }
+
+    
+
     juce::String bestChord;
     int bestScore = 0;
 
-    // Compare note histogram and chord templates and find best match
+
+
+
+    // Compare PCP and chord templates and find best results
     for (int rootNote = 0; rootNote < 12; ++rootNote)
     {
         for (const auto& templateChord : chordTemplates)
         {
             int score = 0;
-            for (int note : templateChord)
+            for (int note : templateChord.first)
             {
-                score += noteHistogram[(rootNote + note) % 12];
+                score += pitchClassProfile[(rootNote + note) % 12];
             }
 
             if (score > bestScore)
             {
                 bestScore = score;
-                bestChord = noteNames[rootNote];
-                // Add more info about chord type if needed like maj, min, maj7
-                DBG("Detected Chord: " << bestChord); 
+                bestChord = noteNames[rootNote] + " " + templateChord.second;
+                //DBG("Detected Chord: " << bestChord); 
             }
         }
     }
 
+
     return bestChord;
 }
+
