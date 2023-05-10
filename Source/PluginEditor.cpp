@@ -182,7 +182,9 @@ void VSTSamplerAudioProcessorEditor::chordDetectionButtonClicked() {
 
         // Buffer to store the time-domain data
         //std::array<float, frameSize * 2> timeDomainData;
-        std::vector<float> timeDomainData(frameSize);
+        std::vector<float> timeDomainData(frameSize*2);
+
+        std::fill(timeDomainData.begin(), timeDomainData.end(), 0.0f);
 
 
         // Buffer to store the magnitudes of the frequency-domain data
@@ -208,6 +210,7 @@ void VSTSamplerAudioProcessorEditor::chordDetectionButtonClicked() {
         float stepSizeInSeconds = 1.0f;
         int stepSize = static_cast<int>(sampleRate * stepSizeInSeconds);
 
+        //int position = 0;
         for (int position = 0; position + frameSize <= playSource->getTotalLength(); position += stepSize)
         {
             // Set the read position for playSource
@@ -222,19 +225,27 @@ void VSTSamplerAudioProcessorEditor::chordDetectionButtonClicked() {
 
             // Read the audio-data from source into the buffer
             playSource->getNextAudioBlock(juce::AudioSourceChannelInfo(audioBuffer));
-
+            
             // Apply windowing function and copy data to the time-domain buffer
+            std::vector<float> channelData(frameSize, 0.0f);
+
             for (int channel = 0; channel < 2; ++channel)
             {
                 for (int i = 0; i < frameSize; ++i)
                 {
-                    timeDomainData[i] += audioBuffer.getWritePointer(channel)[i] * window[i];
+                    channelData[i] = audioBuffer.getWritePointer(channel)[i] * window[i];
+                }
+
+                for (int i = 0; i < frameSize; ++i)
+                {
+                    timeDomainData[i] += channelData[i];
                 }
             }
             //DBG("timeDomainData size: " << timeDomainData.size());
 
             // Perform FFT on audio-data
             fft.performFrequencyOnlyForwardTransform(timeDomainData.data());
+
 
 
             // Copy magnitudes to its vector
@@ -252,7 +263,7 @@ void VSTSamplerAudioProcessorEditor::chordDetectionButtonClicked() {
             // Update chord label text
 
             if (chord.isNotEmpty()) {
-               // chordLabel.setText(chord, juce::dontSendNotification);
+                chordLabel.setText(chord, juce::dontSendNotification);
                 DBG("Updated Chord Label: " << chord); // Add this line
             }
             else
@@ -262,23 +273,13 @@ void VSTSamplerAudioProcessorEditor::chordDetectionButtonClicked() {
 
             if (position + frameSize + hopSize > playSource->getTotalLength())
             {
-                break;
+                //break;
             }
         }
-        audioBuffer.clear();
-        std::fill(timeDomainData.begin(), timeDomainData.end(), 0.0f);
-        std::fill(magnitudes.begin(), magnitudes.end(), 0.0f);
+
         // Restore to original playSource position
         playSource->setNextReadPosition(currentPosition);
         DBG("FINISH");
-        
-        timeDomainData.clear();
-        //timeDomainData.shrink_to_fit();
-        magnitudes.clear();
-//        magnitudes.shrink_to_fit();
-        window.clear();
- //       window.shrink_to_fit();
-
 
 
     }
