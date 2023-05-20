@@ -169,7 +169,7 @@ void VSTSamplerAudioProcessorEditor::chordDetectionButtonClicked() {
     if (playSource != nullptr && reader)
     {
         // FFT Parameters
-        static constexpr auto fftOrder = 13;            
+        static constexpr auto fftOrder = 10;            
         static constexpr auto frameSize = 1 << fftOrder;
         const int hopSize = frameSize / 2;
         DBG("frameSize: " << frameSize);
@@ -194,11 +194,12 @@ void VSTSamplerAudioProcessorEditor::chordDetectionButtonClicked() {
         std::vector<float> window(frameSize);
 
 
-        // Windowing function
-        for (int i = 0; i < frameSize; ++i)
-        {
-            window[i] = 0.5f * (1.0f - cos(2.0f * juce::float_Pi * i / (frameSize - 1)));
+        // Hamming window 
+        std::vector<float> hammingWindow(frameSize);
+        for (int i = 0; i < frameSize; ++i) {
+            hammingWindow[i] = 0.54 - (0.46 * cos((2 * juce::MathConstants<float>::pi * i) / frameSize - 1));
         }
+
 
  
         auto currentPosition = playSource->getNextReadPosition();
@@ -210,8 +211,12 @@ void VSTSamplerAudioProcessorEditor::chordDetectionButtonClicked() {
         float stepSizeInSeconds = 0.1f;
         int stepSize = static_cast<int>(sampleRate * stepSizeInSeconds);
 
+
+
+
         //int position = 0;
         for (int position = 0; position + frameSize <= playSource->getTotalLength(); position += stepSize)
+
         {
             // Set the read position for playSource
             playSource->setNextReadPosition(position);
@@ -226,14 +231,14 @@ void VSTSamplerAudioProcessorEditor::chordDetectionButtonClicked() {
             // Read the audio-data from source into the buffer
             playSource->getNextAudioBlock(juce::AudioSourceChannelInfo(audioBuffer));
             
-            // Apply windowing function and copy data to the time-domain buffer
+            // Apply hamming window
             std::vector<float> channelData(frameSize, 0.0f);
 
             for (int channel = 0; channel < 2; ++channel)
             {
                 for (int i = 0; i < frameSize; ++i)
                 {
-                    channelData[i] = audioBuffer.getWritePointer(channel)[i] * window[i];
+                    channelData[i] = audioBuffer.getWritePointer(channel)[i] * hammingWindow[i];
                 }
 
                 for (int i = 0; i < frameSize; ++i)
@@ -241,6 +246,7 @@ void VSTSamplerAudioProcessorEditor::chordDetectionButtonClicked() {
                     timeDomainData[i] += channelData[i];
                 }
             }
+
             //DBG("timeDomainData size: " << timeDomainData.size());
 
             // Perform FFT on audio-data
@@ -288,36 +294,53 @@ void VSTSamplerAudioProcessorEditor::chordDetectionButtonClicked() {
 
 
 
+float dotProduct(const std::vector<float>& a, const std::vector<float>& b) {
+    float result = 0.0f;
+    for (size_t i = 0; i < a.size(); ++i) {
+        result += a[i] * b[i];
+    }
+    return result;
+}
 
 
 juce::String VSTSamplerAudioProcessorEditor::detectChord(const std::vector<float>& magnitudes) {
-    // Note frequencies and chord templates
+    // Note names and chord templates
     const std::vector<juce::String> noteNames = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
     const std::vector<std::pair<std::vector<int>, juce::String>> chordTemplates = {
-    {{0, 4, 7}, "Major"},
-    {{0, 3, 7}, "Minor"},
-    {{0, 4, 7, 11}, "Major 7th"}
-    // Add more if needed
+        {{0, 4, 7}, "Major"},
+        {{0, 3, 7}, "Minor"},
+        {{0, 4, 7, 11}, "Major 7th"}
+        // Add more if needed
     };
 
     // Vector for PCP
     std::vector<float> pitchClassProfile(12, 0.0f);
 
-    // Calculate PCP
-    for (int i = 1; i < magnitudes.size() - 1; ++i)
-    {
+    // PCP
+    const std::vector<float> noteFrequencies = { 16.35, 17.32, 18.35, 19.45, 20.60, 21.83, 23.12, 24.50, 25.96, 27.50, 29.14, 30.87 };
+    std::vector<float> logFrequencies(noteFrequencies.size());
+    std::transform(noteFrequencies.begin(), noteFrequencies.end(), logFrequencies.begin(), [](float freq) { return std::log2(freq); });
+
+    for (int i = 1; i < magnitudes.size() - 1; ++i) {
         float mag = magnitudes[i];
         if (mag > magnitudes[i - 1] && mag > magnitudes[i + 1])  // Peak detected
         {
             // Convert peak index to frequency
             float freq = static_cast<float>(i) * sampleRate / (2 * magnitudes.size());
+            float logFreq = std::log2(freq);
 
- 
-            int midiNote = round(69 + 12 * log2(freq / 440.0f));
-            int noteIndex = midiNote % 12;
-            pitchClassProfile[noteIndex] += mag;
+            for (int octave = 0; octave < 8; ++octave) {
+                for (int nf = 0; nf < 12; ++nf) {
+                    float lowerBoundLog = (logFrequencies[nf] + logFrequencies[(nf - 1 + 12) % 12]) / 2 + octave;
+                    float upperBoundLog = (logFrequencies[nf] + logFrequencies[(nf + 1) % 12]) / 2 + octave;
+                    if (logFreq > lowerBoundLog && logFreq <= upperBoundLog) {
+                        pitchClassProfile[nf] += mag;
+                    }
+                }
+            }
         }
     }
+
 
     // Normalize PCP
     float maxValue = *std::max_element(pitchClassProfile.begin(), pitchClassProfile.end());
@@ -326,20 +349,15 @@ juce::String VSTSamplerAudioProcessorEditor::detectChord(const std::vector<float
         pitchClassProfile[i] /= maxValue;
     }
 
-    
-
     juce::String bestChord;
-    int bestScore = 0;
+    float bestScore = 0.0f;
 
-
-
-
-    // Compare PCP and chord templates and find best results
+    // Compare PCP and chord templates and find the best match
     for (int rootNote = 0; rootNote < 12; ++rootNote)
     {
         for (const auto& templateChord : chordTemplates)
         {
-            int score = 0;
+            float score = 0.0f;
             for (int note : templateChord.first)
             {
                 score += pitchClassProfile[(rootNote + note) % 12];
@@ -349,12 +367,9 @@ juce::String VSTSamplerAudioProcessorEditor::detectChord(const std::vector<float
             {
                 bestScore = score;
                 bestChord = noteNames[rootNote] + " " + templateChord.second;
-                //DBG("Detected Chord: " << bestChord); 
             }
         }
     }
 
-
     return bestChord;
 }
-
