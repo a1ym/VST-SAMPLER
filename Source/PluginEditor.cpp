@@ -10,14 +10,17 @@
 #include "PluginEditor.h"
 #include <vector>
 #include <cassert>
+#include <fstream>
 
 //==============================================================================
 VSTSamplerAudioProcessorEditor::VSTSamplerAudioProcessorEditor(VSTSamplerAudioProcessor& p)
     : AudioProcessorEditor(&p), p(p), state(Stopped), sampleRate(p.getSampleRate())
 {
+
     // Make sure that before the constructor has finished, you've set the
     // editor's size to whatever you need it to be.
-    setSize(400, 300);
+
+    setSize(400, 250);
 
     importButton.onClick = [this] {importButtonClicked();};
     addAndMakeVisible(&importButton);
@@ -61,24 +64,25 @@ void VSTSamplerAudioProcessorEditor::paint (juce::Graphics& g)
 
     g.setColour (juce::Colours::white);
     g.setFont (15.0f);
-    g.drawFittedText ("VST SAMPLER BY ALIM!", getLocalBounds(), juce::Justification::centred, 1);
+    //g.drawFittedText ("Chord Recognition", getLocalBounds(), juce::Justification::centred, 1);
 }
 
 void VSTSamplerAudioProcessorEditor::resized()
 {
     // This is generally where you'll want to lay out the positions of any
     // subcomponents in your editor..
-    auto leftMargin = getWidth() * 0.02;
-    auto topMargin = getHeight() * 0.04;
-    auto buttonWidth = getWidth() * 0.25;
-    auto buttonHeight = getHeight() * 0.1;
+    auto leftMargin = 8;
+    auto topMargin = 10;
+    auto buttonWidth = 80;
+    auto buttonHeight = 30;
 
-
-    importButton.setBounds(leftMargin, topMargin, buttonWidth, buttonHeight);
-    playButton.setBounds(leftMargin, topMargin + 40, buttonWidth, buttonHeight);
-    stopButton.setBounds(leftMargin, topMargin + 80, buttonWidth, buttonHeight);
-    chordIdButton.setBounds(leftMargin, topMargin + 120, buttonWidth, buttonHeight);
-    chordLabel.setBounds(leftMargin + buttonWidth + 20, topMargin, getWidth() * 0.5, buttonHeight);
+    importButton.setBounds(leftMargin, topMargin + 120, buttonWidth, buttonHeight);
+    playButton.setBounds(leftMargin + 100, topMargin+120, buttonWidth, buttonHeight);
+    stopButton.setBounds(leftMargin + 200, topMargin+120, buttonWidth, buttonHeight);
+    
+    
+    chordIdButton.setBounds(leftMargin + 300, topMargin + 120, buttonWidth, buttonHeight);
+    chordLabel.setBounds(leftMargin + buttonWidth + 20, topMargin + 10, getWidth() * 0.5, buttonHeight);
 
 }
 
@@ -112,8 +116,6 @@ void VSTSamplerAudioProcessorEditor::stopButtonClicked()
     transportStateChanged(Stopping);
 }
 
-
-
 void VSTSamplerAudioProcessorEditor::transportStateChanged(TransportState newState)
 {
     if (newState != state)
@@ -142,8 +144,6 @@ void VSTSamplerAudioProcessorEditor::transportStateChanged(TransportState newSta
             p.transport.stop();
             break;
         }
-
-
     }
 }
 
@@ -169,23 +169,20 @@ void VSTSamplerAudioProcessorEditor::chordDetectionButtonClicked() {
     if (playSource != nullptr && reader)
     {
         // FFT Parameters
-        static constexpr auto fftOrder = 10;            
+        static constexpr auto fftOrder = 12;            
         static constexpr auto frameSize = 1 << fftOrder;
-        const int hopSize = frameSize / 2;
-        DBG("frameSize: " << frameSize);
 
         // FFT object
         juce::dsp::FFT fft(fftOrder);
+
+        const int hopSize = frameSize / 2;
 
         // Buffer to store the audio data
         juce::AudioBuffer<float> audioBuffer(2, frameSize);
 
         // Buffer to store the time-domain data
-        //std::array<float, frameSize * 2> timeDomainData;
         std::vector<float> timeDomainData(frameSize*2);
-
         std::fill(timeDomainData.begin(), timeDomainData.end(), 0.0f);
-
 
         // Buffer to store the magnitudes of the frequency-domain data
         std::vector<float> magnitudes(frameSize / 2);
@@ -193,28 +190,35 @@ void VSTSamplerAudioProcessorEditor::chordDetectionButtonClicked() {
         // Buffer to store the windowing function
         std::vector<float> window(frameSize);
 
-
         // Hamming window 
         std::vector<float> hammingWindow(frameSize);
         for (int i = 0; i < frameSize; ++i) {
             hammingWindow[i] = 0.54 - (0.46 * cos((2 * juce::MathConstants<float>::pi * i) / frameSize - 1));
         }
 
+        // Blackman-Harris window 
+        std::vector<float> blackmanHarrisWindow(frameSize);
+        for (int i = 0; i < frameSize; ++i) {
+            blackmanHarrisWindow[i] = 0.35875 -
+                0.48829 * cos((2 * juce::MathConstants<float>::pi * i) / (frameSize - 1)) +
+                0.14128 * cos((4 * juce::MathConstants<float>::pi * i) / (frameSize - 1)) -
+                0.01168 * cos((6 * juce::MathConstants<float>::pi * i) / (frameSize - 1));
+        }
 
- 
+        // Hann window 
+        std::vector<float> hannWindow(frameSize);
+        for (int i = 0; i < frameSize; ++i) {
+            hannWindow[i] = 0.5f * (1 - cos((2 * juce::MathConstants<float>::pi * i) / (frameSize - 1)));
+        }
+
         auto currentPosition = playSource->getNextReadPosition();
-
 
         sampleRate = reader->sampleRate;
 
-        // Iterate through the audio in chunks of hopSize
-        float stepSizeInSeconds = 0.1f;
+        float stepSizeInSeconds = 0.5f;
         int stepSize = static_cast<int>(sampleRate * stepSizeInSeconds);
 
-
-
-
-        //int position = 0;
+        // Iterate through the audio in chunks of stepSize
         for (int position = 0; position + frameSize <= playSource->getTotalLength(); position += stepSize)
 
         {
@@ -224,21 +228,17 @@ void VSTSamplerAudioProcessorEditor::chordDetectionButtonClicked() {
             double timestamp = static_cast<double>(position) / sampleRate;
             DBG("Timestamp: " << timestamp);
 
-            //DBG("Position: " << position);
-            //DBG("Next read position: " << playSource->getNextReadPosition());
-            //DBG("Total length: " << playSource->getTotalLength());
-
             // Read the audio-data from source into the buffer
             playSource->getNextAudioBlock(juce::AudioSourceChannelInfo(audioBuffer));
             
-            // Apply hamming window
+            // Apply window
             std::vector<float> channelData(frameSize, 0.0f);
 
             for (int channel = 0; channel < 2; ++channel)
             {
                 for (int i = 0; i < frameSize; ++i)
                 {
-                    channelData[i] = audioBuffer.getWritePointer(channel)[i] * hammingWindow[i];
+                    channelData[i] = audioBuffer.getWritePointer(channel)[i] * hannWindow[i];
                 }
 
                 for (int i = 0; i < frameSize; ++i)
@@ -247,27 +247,34 @@ void VSTSamplerAudioProcessorEditor::chordDetectionButtonClicked() {
                 }
             }
 
-            //DBG("timeDomainData size: " << timeDomainData.size());
 
             // Perform FFT on audio-data
             fft.performFrequencyOnlyForwardTransform(timeDomainData.data());
 
-
-
-            // Copy magnitudes to its vector
+            // Extract magnitudes
+            
             for (int i = 0; i < frameSize / 2; ++i)
             {
                 magnitudes[i] = timeDomainData[i];
             }
 
-
-            //DBG("Magnitudes size: " << magnitudes.size());
+            // Saving magnitudes for visual analisys
+            if (timestamp == 1.0) {
+                
+                std::ofstream file("magnitudes.csv");
+                for (const auto& magnitude : magnitudes)
+                {
+                    file << magnitude << ",";
+                }
+                file.close();
+            }
 
             // Analyze frequency data to detect chord
             juce::String chord = detectChord(magnitudes);
-            DBG("Detected Chord: " << chord);
-            // Update chord label text
 
+            DBG("Detected Chord: " << chord);
+            
+            // Update chord label text
             if (chord.isNotEmpty()) {
                 chordLabel.setText(chord, juce::dontSendNotification);
                 DBG("Updated Chord Label: " << chord);
@@ -286,7 +293,6 @@ void VSTSamplerAudioProcessorEditor::chordDetectionButtonClicked() {
         // Restore to original playSource position
         playSource->setNextReadPosition(currentPosition);
         DBG("FINISH");
-
 
     }
 }
@@ -310,13 +316,11 @@ juce::String VSTSamplerAudioProcessorEditor::detectChord(const std::vector<float
         {{0, 4, 7}, "Major"},
         {{0, 3, 7}, "Minor"},
         {{0, 4, 7, 11}, "Major 7th"}
-        // Add more if needed
+        // More can be added
     };
 
-    // Vector for PCP
-    std::vector<float> pitchClassProfile(12, 0.0f);
-
     // PCP
+    std::vector<float> pitchClassProfile(12, 0.0f);
     const std::vector<float> noteFrequencies = { 16.35, 17.32, 18.35, 19.45, 20.60, 21.83, 23.12, 24.50, 25.96, 27.50, 29.14, 30.87 };
     std::vector<float> logFrequencies(noteFrequencies.size());
     std::transform(noteFrequencies.begin(), noteFrequencies.end(), logFrequencies.begin(), [](float freq) { return std::log2(freq); });
@@ -341,14 +345,15 @@ juce::String VSTSamplerAudioProcessorEditor::detectChord(const std::vector<float
         }
     }
 
-
+/*
     // Normalize PCP
     float maxValue = *std::max_element(pitchClassProfile.begin(), pitchClassProfile.end());
     for (int i = 0; i < 12; ++i)
     {
         pitchClassProfile[i] /= maxValue;
     }
-
+*/
+ 
     juce::String bestChord;
     float bestScore = 0.0f;
 

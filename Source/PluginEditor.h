@@ -52,16 +52,21 @@ private:
     juce::TextButton importButton;
     juce::TextButton playButton;
     juce::TextButton stopButton;
+
+
     juce::TextButton chordIdButton;
     juce::Label chordLabel;
     
     void importButtonClicked();
-    
+
+
     void playButtonClicked();
     void stopButtonClicked();
     void transportStateChanged(TransportState newState);
     void changeListenerCallback (juce::ChangeBroadcaster* source) override;
     void chordDetectionButtonClicked();
+
+
     juce::String detectChord(const std::vector<float>& frequencyData);
 
 
