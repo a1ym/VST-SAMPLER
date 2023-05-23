@@ -6,6 +6,9 @@
   ==============================================================================
 */
 
+// The JUCE tutorial was followed to create the audio player: https://docs.juce.com/master/tutorial_playing_sound_files.html
+// The JUCE tutorial was followed to implement FFT: https://docs.juce.com/master/tutorial_simple_fft.html
+
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include <vector>
@@ -148,7 +151,7 @@ void VSTSamplerAudioProcessorEditor::transportStateChanged(TransportState newSta
 }
 
 
-//Listening for changes - if there is a change, the state is changed to stopped
+// Listening for changes - if there is a change, the state is changed to stopped
 void VSTSamplerAudioProcessorEditor::changeListenerCallback(juce::ChangeBroadcaster* source) {
     if (source == &p.transport) {
         if (p.transport.isPlaying()) {
